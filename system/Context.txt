@@ -1,0 +1,13 @@
+Constraints:
+
+Server = Express, isolated from frontend.
+
+Replace JSON storage with a pluggable DB adapter behind /lib/dbHelpers.ts.
+
+Auth behind /lib/authHelpers.ts with JWT (access + refresh), Argon2 for hashing, rotation, and env-driven secrets.
+
+Frontend communicates only via hooks (useTickets, useNotifications, etc.) and an /lib/apiClient.ts.
+
+No component imports server code.
+
+All backend changes happen behind dbHelpers.ts and authHelpers.ts so we can swap databases/providers with zero frontend changes.
