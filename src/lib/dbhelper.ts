@@ -1,10 +1,7 @@
 import { supabaseInterface } from "../backend/supabase/supabase-interface";
-import { mockBackendInterface } from "../backend/mock/mock-backend-interface";
-import { expressInterface } from "../backend/express/express-interface";
+import { backendProvider } from "../backend/backend-provider";
 
-// Set backend 
-// const db = supabaseInterface;
-const db = mockBackendInterface;
+const db = backendProvider.backend;
 
 const userHelpers = {
 
@@ -53,4 +50,3 @@ export const dbHelpers = {
     checkUserRole: db.checkUserRole,
 
 };
-
