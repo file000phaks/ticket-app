@@ -198,6 +198,8 @@ export class UserProfile {
       fullName: record.fullName,
       role: record.role,
       department: record.department,
+      region: record.region,
+      serviceArea: record.serviceArea,
       phone: record.phone,
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
