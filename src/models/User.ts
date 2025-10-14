@@ -177,6 +177,8 @@ export class UserProfile {
       fullName: this.fullName,
       role: this.role,
       department: this.department,
+      region: this.region,
+      serviceArea: this.serviceArea,
       phone: this.phone,
       isActive: this.isActive,
       createdAt: this.createdAt,
