@@ -27,7 +27,13 @@ export class UserProfile {
   
   /** @type {string|null} User's department */
   public department: string | null;
-  
+
+  /** @type {string|null} Region or province the user primarily supports */
+  public region: string | null;
+
+  /** @type {string|null} Primary service area (district or city) */
+  public serviceArea: string | null;
+
   /** @type {string|null} User's phone number */
   public phone: string | null;
   
