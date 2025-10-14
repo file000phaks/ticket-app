@@ -31,16 +31,31 @@ export default function OfflineIndicator() {
       setLastOnline(new Date());
       // Simple connection quality check
       const checkConnection = async () => {
+        // Use a conservative timeout and AbortController to avoid hanging fetches
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+
         try {
           const start = Date.now();
-          await fetch('/?ping=' + Math.random(), { method: 'HEAD' });
+          // Fetch a small static asset on the same origin. Use GET and no-store to bypass caches.
+          const res = await fetch('/favicon.svg?ping=' + Date.now(), { method: 'GET', cache: 'no-store', signal: controller.signal });
+          clearTimeout(timeout);
+
+          // If response is opaque (mode no-cors) some environments return type 'opaque' and status 0 — treat as success
+          if (!res.ok && res.type !== 'opaque') {
+            throw new Error('Network response was not ok');
+          }
+
           const latency = Date.now() - start;
-          
+
           if (latency < 100) setConnectionQuality('excellent');
           else if (latency < 300) setConnectionQuality('good');
           else setConnectionQuality('poor');
-        } catch {
+        } catch (err) {
+          // Any error (abort, network failure, CORS, etc.) considered offline/poor
           setConnectionQuality('offline');
+        } finally {
+          clearTimeout(timeout);
         }
       };
       

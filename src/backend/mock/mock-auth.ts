@@ -1,245 +1,317 @@
 import { UserProfile } from "../../models/User";
 import { mockUsers } from "./mock-data";
 
-const users = mockUsers;
+interface MockSession {
+  user: UserProfile;
+  access_token: string;
+}
 
-// usersMap database (using lowercase keys for case-insensitive lookup)
-const usersMap = new Map<string, { user: UserProfile; password: string }>( [
-    [ 'admin@test.com',
-        {
-            user: users.find( user => user.email === "admin@test.com" ),
-            password: 'admin123'
-        }
-    ],
-    [ 'supervisor@test.com',
-        {
-            user: users.find( user => user.email === "supervisor@test.com" ),
-            password: 'supervisor123'
-        }
-    ],
-    [ 'engineer@test.com',
-        {
-            user: users.find( user => user.email === "engineer@test.com" ),
-            password: 'engineer123'
-        }
-    ]
-] );
+type AuthChangeCallback = (event: string, session: MockSession | null) => void;
 
-// Mock session storage
-let currentSession: { user: UserProfile; access_token: string } | null = null;
-
-// Store auth change listeners
-let authChangeListeners: ( ( event: string, session: any ) => void )[] = [];
-
-const signIn = async ( email: string, password: string ) => {
-
-    // Simulate network delay
-    await new Promise( resolve => setTimeout( resolve, 500 ) );
-
-    // Make email lookup case-insensitive
-    email = email.toLowerCase().trim();
-
-    // Find user with case-insensitive email matching
-    let mockUser = null;
-
-    for ( const [ key, user ] of usersMap.entries() ) {
-
-        if ( key.toLowerCase() === email ) {
-            mockUser = user;
-            break;
-        }
-
-    }
-
-    if ( !mockUser ) {
-
-        console.log( 'Available test accounts:', Array.from( usersMap.keys() ) );
-        throw new Error( `Invalid email. Available test accounts: ${Array.from( usersMap.keys() ).join( ', ' )}` );
-
-    }
-
-    if ( mockUser.password !== password ) {
-        console.log( 'Password mismatch for', email, 'expected:', mockUser.password );
-        throw new Error( 'Invalid password' );
-    }
-
-    if ( !mockUser.user.isActive ) {
-        throw new Error( 'Account is deactivated' );
-    }
-
-    const session = {
-        user: mockUser.user,
-        access_token: `token_${Date.now()}`
-    };
-
-    currentSession = session;
-    localStorage.setItem( 'ticket_app_session', JSON.stringify( session ) );
-
-    // Trigger auth state change listeners
-    authChangeListeners.forEach( callback => {
-
-        try {
-
-            callback( 'SIGNED_IN', session );
-
-        } catch ( error ) {
-
-            console.error( 'Error in auth change listener:', error );
-
-        }
-
-    } );
-
-    return {
-        data: {
-            user: mockUser.user,
-            session
-        },
-        error: null
-    };
-
+type StoredUserRecord = {
+  profile: UserProfile;
+  password: string;
 };
 
-const signUp = async ( email: string, password: string, fullName?: string ) => {
+const SESSION_STORAGE_KEY = "ticket_app_session";
+const credentialStore = new Map<string, StoredUserRecord>();
+let currentSession: MockSession | null = null;
+let authChangeListeners: AuthChangeCallback[] = [];
 
-    let error: Error;
+const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
-    let user: UserProfile;
+const cloneProfile = (profile: UserProfile): UserProfile => {
+  return new UserProfile({
+    id: profile.id,
+    email: profile.email,
+    fullName: profile.fullName,
+    role: profile.role,
+    department: profile.department,
+    phone: profile.phone,
+    isActive: profile.isActive,
+    createdAt: new Date(profile.createdAt),
+    updatedAt: new Date(profile.updatedAt),
+  });
+};
 
+const serializeProfile = (profile: UserProfile) => ({
+  id: profile.id,
+  email: profile.email,
+  fullName: profile.fullName,
+  role: profile.role,
+  department: profile.department,
+  phone: profile.phone,
+  isActive: profile.isActive,
+  createdAt: profile.createdAt.toISOString(),
+  updatedAt: profile.updatedAt.toISOString(),
+});
+
+const deserializeProfile = (raw: any): UserProfile => {
+  return new UserProfile({
+    id: raw.id,
+    email: raw.email,
+    fullName: raw.fullName ?? null,
+    role: raw.role,
+    department: raw.department ?? null,
+    phone: raw.phone ?? null,
+    isActive: raw.isActive ?? true,
+    createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+    updatedAt: raw.updatedAt ? new Date(raw.updatedAt) : new Date(),
+  });
+};
+
+const persistSession = (session: MockSession | null) => {
+  if (!session) {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return;
+  }
+
+  const stored = {
+    user: serializeProfile(session.user),
+    access_token: session.access_token,
+  };
+
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(stored));
+};
+
+const loadPersistedSession = (): MockSession | null => {
+  const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+
+  if (!stored) return null;
+
+  try {
+    const parsed = JSON.parse(stored);
+
+    if (!parsed?.user) return null;
+
+    return {
+      user: deserializeProfile(parsed.user),
+      access_token: parsed.access_token,
+    };
+  } catch (error) {
+    console.warn("Failed to parse stored session", error);
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+};
+
+const notifyAuthChange = (event: string, session: MockSession | null) => {
+  authChangeListeners.forEach((callback) => {
     try {
-
-        user = new UserProfile( {
-            id: String( Date.now() ),
-            email,
-            fullName,
-            role: "field_engineer",
-            department: "field",
-            phone: "263780000001",
-            isActive: true,
-            createdAt: new Date(),
-            updatedAt: new Date()
-        } )
-
-    } catch (err) {
-
-        error = new Error(`Error creating user: ${err}`)
-
+      callback(event, session ? { ...session, user: cloneProfile(session.user) } : null);
+    } catch (error) {
+      console.error("Error in auth change listener:", error);
     }
+  });
+};
 
-    return { data: user, error }
+const registerUserCredential = (profile: UserProfile, password: string) => {
+  const key = normalizeEmail(profile.email);
+  credentialStore.set(key, { profile, password });
 
+  const existingIndex = mockUsers.findIndex((user) => user.id === profile.id);
+  if (existingIndex === -1) {
+    mockUsers.push(profile);
+  } else {
+    mockUsers[existingIndex] = profile;
+  }
+};
+
+[
+  { email: "admin@test.com", password: "admin123" },
+  { email: "supervisor@test.com", password: "supervisor123" },
+  { email: "engineer@test.com", password: "engineer123" },
+].forEach(({ email, password }) => {
+  const profile = mockUsers.find((user) => normalizeEmail(user.email) === normalizeEmail(email));
+
+  if (profile) {
+    registerUserCredential(profile, password);
+  }
+});
+
+if (!currentSession) {
+  currentSession = loadPersistedSession();
+  if (currentSession) {
+    const key = normalizeEmail(currentSession.user.email);
+    if (!credentialStore.has(key)) {
+      registerUserCredential(currentSession.user, "");
+    }
+  }
+}
+
+const createSession = (profile: UserProfile): MockSession => ({
+  user: cloneProfile(profile),
+  access_token: `token_${Date.now()}`,
+});
+
+const signIn = async (email: string, password: string) => {
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  const normalizedEmail = normalizeEmail(email);
+  const record = credentialStore.get(normalizedEmail);
+
+  if (!record) {
+    throw new Error("Invalid email or password");
+  }
+
+  if (record.password !== password) {
+    throw new Error("Invalid email or password");
+  }
+
+  if (!record.profile.isActive) {
+    throw new Error("Account is deactivated");
+  }
+
+  currentSession = createSession(record.profile);
+  persistSession(currentSession);
+  notifyAuthChange("SIGNED_IN", currentSession);
+
+  return {
+    data: {
+      user: cloneProfile(record.profile),
+      session: { ...currentSession },
+    },
+    error: null,
+  };
+};
+
+const signUp = async (email: string, password: string, fullName?: string) => {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const normalizedEmail = normalizeEmail(email);
+
+  if (credentialStore.has(normalizedEmail)) {
+    return {
+      data: null,
+      error: new Error("An account with this email already exists"),
+    };
+  }
+
+  const now = new Date();
+  const generatedId = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `mock-${now.getTime()}`;
+
+  const profile = new UserProfile({
+    id: generatedId,
+    email: email.trim(),
+    fullName: fullName?.trim() || null,
+    role: "field_engineer",
+    department: "field",
+    phone: null,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  registerUserCredential(profile, password);
+
+  return {
+    data: {
+      user: cloneProfile(profile),
+      session: null,
+    },
+    error: null,
+  };
 };
 
 const signOut = async () => {
+  currentSession = null;
+  persistSession(null);
+  notifyAuthChange("SIGNED_OUT", null);
 
-    currentSession = null;
-
-    localStorage.removeItem( 'ticket_app_session' );
-
-    // Trigger auth state change listeners
-    authChangeListeners.forEach( callback => {
-
-        try {
-
-            callback( 'SIGNED_OUT', null );
-
-        } catch ( error ) {
-
-            console.error( 'Error in auth change listener:', error );
-
-        }
-
-    } );
-
-    return { error: null };
-
+  return { error: null };
 };
 
 const getSession = async () => {
+  if (!currentSession) {
+    currentSession = loadPersistedSession();
+  }
 
-    if ( currentSession ) {
-
-        return { data: { session: currentSession }, error: null };
-
-    }
-
-    const stored = localStorage.getItem( 'ticket_app_session' );
-
-    if ( stored ) {
-
-        currentSession = JSON.parse( stored );
-        return { data: { session: currentSession }, error: null };
-
-    }
-
-    return { data: { session: null }, error: null };
-
+  return {
+    data: {
+      session: currentSession ? { ...currentSession, user: cloneProfile(currentSession.user) } : null,
+    },
+    error: null,
+  };
 };
 
 const getUser = async () => {
+  const { data } = await getSession();
 
-    const session = await getSession();
-
-    return {
-        data: { user: session.data.session?.user || null },
-        error: null
-    };
-
+  return {
+    data: {
+      user: data.session ? cloneProfile(data.session.user) : null,
+    },
+    error: null,
+  };
 };
 
-const onAuthStateChange = ( callback: ( event: string, session: any ) => void ) => {
+const onAuthStateChange = (callback: AuthChangeCallback) => {
+  authChangeListeners.push(callback);
 
-    // Add listener to the array
-    authChangeListeners.push( callback );
-
-    return {
-        data: {
-            subscription: {
-                unsubscribe: () => {
-                    // Remove listener when unsubscribing
-                    const index = authChangeListeners.indexOf( callback );
-                    if ( index > -1 ) {
-                        authChangeListeners.splice( index, 1 );
-                    }
-                }
-            }
-        }
-    };
-}
-
-const getCurrentUserProfile = async ( existingUser?: UserProfile ) => {
-
-    const user = existingUser || currentSession?.user;
-
-    if ( !user ) return null;
-
-    const mockUser = usersMap.get( user.email );
-
-    return mockUser?.user || null;
-
+  return {
+    data: {
+      subscription: {
+        unsubscribe: () => {
+          authChangeListeners = authChangeListeners.filter((listener) => listener !== callback);
+        },
+      },
+    },
+  };
 };
 
-const updateProfile = async ( userId: string, updates: Partial<UserProfile> ) => {
+const getCurrentUserProfile = async () => {
+  if (!currentSession) {
+    currentSession = loadPersistedSession();
+  }
 
-    let error: Error;
+  const session = currentSession;
+  if (!session) return null;
 
-    const profile = Array.from(usersMap.values()).find(profile => profile.user.id === userId)
+  const record = credentialStore.get(normalizeEmail(session.user.email));
+  return record ? cloneProfile(record.profile) : cloneProfile(session.user);
+};
 
-    Object.assign(profile.user, updates);
+const updateProfile = async (userId: string, updates: Partial<UserProfile>) => {
+  const entry = Array.from(credentialStore.values()).find((record) => record.profile.id === userId);
 
-    return { data: profile.user, error }
+  if (!entry) {
+    return {
+      data: null,
+      error: new Error("User not found"),
+    };
+  }
 
-}
+  Object.assign(entry.profile, {
+    fullName: updates.fullName ?? entry.profile.fullName,
+    department: updates.department ?? entry.profile.department,
+    phone: updates.phone ?? entry.profile.phone,
+    role: updates.role ?? entry.profile.role,
+    isActive: updates.isActive ?? entry.profile.isActive,
+  });
+  entry.profile.updatedAt = new Date();
+
+  registerUserCredential(entry.profile, entry.password);
+
+  if (currentSession && currentSession.user.id === userId) {
+    currentSession = createSession(entry.profile);
+    persistSession(currentSession);
+  }
+
+  return {
+    data: cloneProfile(entry.profile),
+    error: null,
+  };
+};
 
 export const mockAuthInterface = {
-
-    signIn,
-    signOut,
-    signUp,
-    getUser,
-    onAuthStateChange,
-    getCurrentUserProfile,
-    updateProfile,
-    getSession,
-
-}
+  signIn,
+  signOut,
+  signUp,
+  getUser,
+  onAuthStateChange,
+  getCurrentUserProfile,
+  updateProfile,
+  getSession,
+};

@@ -33,7 +33,11 @@ export default function AuthForm( { onAuthSuccess }: AuthFormProps ) {
 
   const navigate = useNavigate();
 
-  if ( user ) navigate( "/" )
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   const [ activeTab, setActiveTab ] = useState<'signin' | 'signup'>( 'signin' );
   const [ formData, setFormData ] = useState( {

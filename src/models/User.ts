@@ -27,7 +27,13 @@ export class UserProfile {
   
   /** @type {string|null} User's department */
   public department: string | null;
-  
+
+  /** @type {string|null} Region or province the user primarily supports */
+  public region: string | null;
+
+  /** @type {string|null} Primary service area (district or city) */
+  public serviceArea: string | null;
+
   /** @type {string|null} User's phone number */
   public phone: string | null;
   
@@ -59,7 +65,9 @@ export class UserProfile {
     fullName: string | null;
     role?: 'admin' | 'supervisor' | 'field_engineer';
     department?: string | null;
-    phone: string | null;
+    region?: string | null;
+    serviceArea?: string | null;
+    phone?: string | null;
     isActive?: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -68,9 +76,11 @@ export class UserProfile {
     this.email = userData.email;
     this.fullName = userData.fullName;
     this.role = userData.role || 'field_engineer';
-    this.department = userData.department || "";
-    this.phone = userData.phone;
-    this.isActive = userData.isActive || true;
+    this.department = userData.department ?? null;
+    this.region = userData.region ?? null;
+    this.serviceArea = userData.serviceArea ?? null;
+    this.phone = userData.phone ?? null;
+    this.isActive = userData.isActive ?? true;
     this.createdAt = userData.createdAt;
     this.updatedAt = userData.updatedAt;
   }
@@ -167,6 +177,8 @@ export class UserProfile {
       fullName: this.fullName,
       role: this.role,
       department: this.department,
+      region: this.region,
+      serviceArea: this.serviceArea,
       phone: this.phone,
       isActive: this.isActive,
       createdAt: this.createdAt,
@@ -186,6 +198,8 @@ export class UserProfile {
       fullName: record.fullName,
       role: record.role,
       department: record.department,
+      region: record.region,
+      serviceArea: record.serviceArea,
       phone: record.phone,
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
@@ -371,12 +385,14 @@ export class UserFactory {
       fullName: record.fullName,
       role: record.role,
       department: record.department,
+      region: record.region,
+      serviceArea: record.serviceArea,
       phone: record.phone,
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt)
     };
-    
+
     return UserFactory.createUser(userData);
   }
 }
