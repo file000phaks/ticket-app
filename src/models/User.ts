@@ -65,7 +65,9 @@ export class UserProfile {
     fullName: string | null;
     role?: 'admin' | 'supervisor' | 'field_engineer';
     department?: string | null;
-    phone: string | null;
+    region?: string | null;
+    serviceArea?: string | null;
+    phone?: string | null;
     isActive?: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -74,9 +76,11 @@ export class UserProfile {
     this.email = userData.email;
     this.fullName = userData.fullName;
     this.role = userData.role || 'field_engineer';
-    this.department = userData.department || "";
-    this.phone = userData.phone;
-    this.isActive = userData.isActive || true;
+    this.department = userData.department ?? null;
+    this.region = userData.region ?? null;
+    this.serviceArea = userData.serviceArea ?? null;
+    this.phone = userData.phone ?? null;
+    this.isActive = userData.isActive ?? true;
     this.createdAt = userData.createdAt;
     this.updatedAt = userData.updatedAt;
   }
