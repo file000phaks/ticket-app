@@ -385,12 +385,14 @@ export class UserFactory {
       fullName: record.fullName,
       role: record.role,
       department: record.department,
+      region: record.region,
+      serviceArea: record.serviceArea,
       phone: record.phone,
       isActive: record.isActive,
       createdAt: new Date(record.createdAt),
       updatedAt: new Date(record.updatedAt)
     };
-    
+
     return UserFactory.createUser(userData);
   }
 }
